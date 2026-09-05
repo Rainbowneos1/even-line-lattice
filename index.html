@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>偶棋 - 双人热座（完整版）</title>
+    <style>
+        :root {
+            --bg: #faf8f0;
+            --panel: #fffef8;
+            --board-bg: #f0ead8;
+            --grid-line: #ddd6c0;
+            --dot-color: #4a3f2a;
+            --red: #d94f4f;
+            --red-light: #f5b8b8;
+            --blue: #4f7dd9;
+            --blue-light: #b8cdf5;
+            --gray: #cccccc;
+            --text: #2c2c2c;
+            --shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            padding: 20px;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .game-container {
+            background: var(--panel);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            padding: 28px 32px 32px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 700px;
+            width: 100%;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .turn-indicator {
+            font-size: 1.5rem;
+            font-weight: 700;
+            padding: 8px 20px;
+            border-radius: 30px;
+            background: #f3efe6;
+            box-shadow: inset 0 0 0 1px #ddd6c0;
+            transition: all 0.2s;
+        }
+        .turn-red { color: var(--red); background: #fdecec; box-shadow: inset 0 0 0 2px var(--red-light); }
+        .turn-blue { color: var(--blue); background: #ecf0fd; box-shadow: inset 0 0 0 2px var(--blue-light); }
+        .scoreboard { display: flex; gap: 20px; font-size: 1.3rem; font-weight: 600; }
+        .score-item { display: flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 20px; background: #f9f6ef; }
+        .score-red-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--red); }
+        .score-blue-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--blue); }
+        .canvas-wrapper { position: relative; margin: 8px 0; }
+        canvas {
+            display: block;
+            border-radius: 16px;
+            background: var(--board-bg);
+            box-shadow: inset 0 0 0 2px #ddd6c0, var(--shadow);
+            cursor: pointer;
+            width: 100%;
+            height: auto;
+        }
+        .toast-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(40, 40, 40, 0.92);
+            color: #fff;
+            padding: 12px 28px;
+            border-radius: 40px;
+            font-size: 1.3rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+            white-space: nowrap;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+        .toast-message.show { opacity: 1; }
+        .result-area {
+            margin-top: 16px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            min-height: 60px;
+        }
+        .result-text {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text);
+            background: #f9f5ec;
+            padding: 10px 24px;
+            border-radius: 30px;
+            box-shadow: inset 0 0 0 1px #ddd6c0;
+        }
+        .btn {
+            background: #4a3f2a;
+            color: #fff;
+            border: none;
+            border-radius: 30px;
+            padding: 12px 32px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            cursor: pointer;
+            letter-spacing: 1px;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: var(--shadow);
+            margin: 4px;
+        }
+        .btn:hover { background: #2c2c2c; }
+        .btn:active { transform: scale(0.96); }
+        .btn:disabled { background: #cccccc; cursor: not-allowed; box-shadow: none; }
+        .btn.hidden { display: none; }
+        .legend { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 0.85rem; color: #555; margin-top: 10px; }
+        .legend-item { display: flex; align-items: center; gap: 4px; }
+        .legend-swatch { width: 20px; height: 20px; border-radius: 4px; border: 1px solid #bbb; }
+        .start-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 30px 0;
+        }
+        .start-screen h2 {
+            font-size: 2rem;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+        .size-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="start-screen" id="startScreen">
+            <h2>偶棋</h2>
+            <p>选择棋盘大小：</p>
+            <div class="size-buttons" id="sizeButtons"></div>
+        </div>
+
+        <div id="gameScreen" class="hidden">
+            <div class="header">
+                <div class="turn-indicator" id="turnIndicator">红方回合</div>
+                <div class="scoreboard">
+                    <div class="score-item"><span class="score-red-dot"></span><span>红方：<span id="scoreRed">0</span></span></div>
+                    <div class="score-item"><span class="score-blue-dot"></span><span>蓝方：<span id="scoreBlue">0</span></span></div>
+                </div>
+            </div>
+
+            <div class="canvas-wrapper">
+                <canvas id="gameCanvas"></canvas>
+                <div class="toast-message" id="toastMessage"></div>
+            </div>
+
+            <div class="result-area" id="resultArea">
+                <div class="result-text hidden" id="resultText"></div>
+                <div>
+                    <button class="btn" id="btnUndo">悔棋</button>
+                    <button class="btn" id="btnRestart">重玩</button>
+                </div>
+            </div>
+
+            <div class="legend">
+                <div class="legend-item"><span class="legend-swatch" style="background:#d94f4f;"></span>红全分</div>
+                <div class="legend-item"><span class="legend-swatch" style="background:#f5b8b8;"></span>红半分</div>
+                <div class="legend-item"><span class="legend-swatch" style="background:#cccccc;"></span>0分</div>
+                <div class="legend-item"><span class="legend-swatch" style="background:#b8cdf5;"></span>蓝半分</div>
+                <div class="legend-item"><span class="legend-swatch" style="background:#4f7dd9;"></span>蓝全分</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            const MARGIN = 40;
+            const SPACING = 50;
+            const RED = 1;
+            const BLUE = 2;
+
+            // 棋盘尺寸配置
+            const BOARDS = [
+                [11, 11], [10, 11], [10, 10], [9, 10],
+                [9, 9], [8, 9], [8, 8], [7, 8]
+            ];
+
+            let canvas = document.getElementById('gameCanvas');
+            let ctx = canvas.getContext('2d');
+            let startScreen = document.getElementById('startScreen');
+            let gameScreen = document.getElementById('gameScreen');
+            let sizeButtons = document.getElementById('sizeButtons');
+            let turnIndicator = document.getElementById('turnIndicator');
+            let scoreRedSpan = document.getElementById('scoreRed');
+            let scoreBlueSpan = document.getElementById('scoreBlue');
+            let toastMessage = document.getElementById('toastMessage');
+            let resultText = document.getElementById('resultText');
+            let btnUndo = document.getElementById('btnUndo');
+            let btnRestart = document.getElementById('btnRestart');
+
+            // 动态变量
+            let POINTS_X, POINTS_Y, CELLS_X, CELLS_Y, CANVAS_WIDTH, CANVAS_HEIGHT;
+            let edgesH, edgesV, pointUsed, frozenRegions, scores;
+            let currentPlayer, noMoveFlags, gameOverFlag, moveCount;
+            let hoveredEdge = null;
+            let lastState = null; // 悔棋快照
+
+            // 初始化尺寸按钮
+            BOARDS.forEach(([x, y]) => {
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.textContent = `${x}×${y}`;
+                btn.addEventListener('click', () => startGame(x, y));
+                sizeButtons.appendChild(btn);
+            });
+
+            function startGame(rows, cols) {
+                POINTS_X = cols; 
+                POINTS_Y = rows;
+                CELLS_X = cols - 1;
+                CELLS_Y = rows - 1;
+                CANVAS_WIDTH = MARGIN * 2 + (POINTS_X - 1) * SPACING;
+                CANVAS_HEIGHT = MARGIN * 2 + (POINTS_Y - 1) * SPACING;
+                canvas.width = CANVAS_WIDTH;
+                canvas.height = CANVAS_HEIGHT;
+
+                initArrays();
+                lastState = null;
+                btnUndo.disabled = true;
+                resultText.classList.add('hidden');
+                startScreen.classList.add('hidden');
+                gameScreen.classList.remove('hidden');
+                updateScoreDisplay();
+                updateTurnDisplay();
+                drawBoard();
+                beginTurn();
+            }
+
+            function initArrays() {
+                edgesH = Array.from({ length: POINTS_Y }, () => Array(CELLS_X).fill(0));
+                edgesV = Array.from({ length: CELLS_Y }, () => Array(POINTS_X).fill(0));
+                pointUsed = Array.from({ length: POINTS_Y }, () => Array(POINTS_X).fill(false));
+                frozenRegions = [];
+                scores = { red: 0, blue: 0 };
+                currentPlayer = 'red';
+                noMoveFlags = { red: false, blue: false };
+                gameOverFlag = false;
+                moveCount = 0;
+                hoveredEdge = null;
+            }
+
+            function edgeKey(type, r, c) {
+                return type === 'H' ? `H,${r},${c}` : `V,${r},${c}`;
+            }
+
+            function getEndpoints(type, r, c) {
+                if (type === 'H') return [{ r, c }, { r, c: c + 1 }];
+                else return [{ r, c }, { r: r + 1, c }];
+            }
+
+            function isEdgeOccupied(type, r, c) {
+                return type === 'H' ? edgesH[r][c] !== 0 : edgesV[r][c] !== 0;
+            }
+
+            function getEdgeValue(type, r, c) {
+                return type === 'H' ? edgesH[r][c] : edgesV[r][c];
+            }
+
+            function setEdgeValue(type, r, c, val) {
+                if (type === 'H') edgesH[r][c] = val;
+                else edgesV[r][c] = val;
+            }
+
+            function recalcPointUsed(r, c) {
+                let hasEdge = false;
+                if (c > 0 && edgesH[r][c - 1] !== 0) hasEdge = true;
+                if (c < CELLS_X && edgesH[r][c] !== 0) hasEdge = true;
+                if (r > 0 && edgesV[r - 1][c] !== 0) hasEdge = true;
+                if (r < CELLS_Y && edgesV[r][c] !== 0) hasEdge = true;
+                pointUsed[r][c] = hasEdge;
+            }
+
+            function addEdge(type, r, c, playerVal) {
+                setEdgeValue(type, r, c, playerVal);
+                const endpoints = getEndpoints(type, r, c);
+                endpoints.forEach(p => recalcPointUsed(p.r, p.c));
+                moveCount++;
+            }
+
+            function removeEdge(type, r, c) {
+                setEdgeValue(type, r, c, 0);
+                const endpoints = getEndpoints(type, r, c);
+                endpoints.forEach(p => recalcPointUsed(p.r, p.c));
+            }
+
+            function checkConnectivity(type, r, c) {
+                if (moveCount === 0) return true;
+                const endpoints = getEndpoints(type, r, c);
+                for (const ep of endpoints) {
+                    if (pointUsed[ep.r][ep.c]) return true;
+                }
+                return false;
+            }
+
+            function checkPointRuleAfterSimulation() {
+                for (let r = 1; r < POINTS_Y - 1; r++) {
+                    for (let c = 1; c < POINTS_X - 1; c++) {
+                        const up = edgesV[r - 1][c];
+                        const down = edgesV[r][c];
+                        const left = edgesH[r][c - 1];
+                        const right = edgesH[r][c];
+
+                        if (up !== 0 && down !== 0 && left !== 0 && right !== 0) {
+                            let redCount = 0;
+                            if (up === RED) redCount++;
+                            if (down === RED) redCount++;
+                            if (left === RED) redCount++;
+                            if (right === RED) redCount++;
+                            if (redCount % 2 !== 0) return false;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            function isEdgeInsideFrozenRegion(type, r, c) {
+                let cells = [];
+                if (type === 'H') {
+                    if (r - 1 >= 0) cells.push(`${r - 1},${c}`);
+                    if (r < CELLS_Y) cells.push(`${r},${c}`);
+                } else {
+                    if (c - 1 >= 0) cells.push(`${r},${c - 1}`);
+                    if (c < CELLS_X) cells.push(`${r},${c}`);
+                }
+                if (cells.length === 0) return false;
+                for (const region of frozenRegions) {
+                    if (cells.every(ck => region.cellSet.has(ck))) return true;
+                }
+                return false;
+            }
+
+            // 封闭区域检测（边缘正确）
+            function computeClosedComponents() {
+                const visited = Array.from({ length: CELLS_Y }, () => Array(CELLS_X).fill(false));
+                const queue = [];
+                // 上边缘
+                for (let c = 0; c < CELLS_X; c++) {
+                    if (edgesH[0][c] === 0) { visited[0][c] = true; queue.push([0, c]); }
+                }
+                // 下边缘
+                for (let c = 0; c < CELLS_X; c++) {
+                    if (edgesH[CELLS_Y][c] === 0) { visited[CELLS_Y - 1][c] = true; queue.push([CELLS_Y - 1, c]); }
+                }
+                // 左边缘
+                for (let r = 0; r < CELLS_Y; r++) {
+                    if (edgesV[r][0] === 0) { visited[r][0] = true; queue.push([r, 0]); }
+                }
+                // 右边缘
+                for (let r = 0; r < CELLS_Y; r++) {
+                    if (edgesV[r][CELLS_X] === 0) { visited[r][CELLS_X - 1] = true; queue.push([r, CELLS_X - 1]); }
+                }
+
+                while (queue.length > 0) {
+                    const [r, c] = queue.shift();
+                    if (r > 0 && !visited[r - 1][c] && edgesH[r][c] === 0) { visited[r - 1][c] = true; queue.push([r - 1, c]); }
+                    if (r < CELLS_Y - 1 && !visited[r + 1][c] && edgesH[r + 1][c] === 0) { visited[r + 1][c] = true; queue.push([r + 1, c]); }
+                    if (c > 0 && !visited[r][c - 1] && edgesV[r][c] === 0) { visited[r][c - 1] = true; queue.push([r, c - 1]); }
+                    if (c < CELLS_X - 1 && !visited[r][c + 1] && edgesV[r][c + 1] === 0) { visited[r][c + 1] = true; queue.push([r, c + 1]); }
+                }
+
+                const components = [];
+                const compVisited = Array.from({ length: CELLS_Y }, () => Array(CELLS_X).fill(false));
+                for (let r = 0; r < CELLS_Y; r++) {
+                    for (let c = 0; c < CELLS_X; c++) {
+                        if (!visited[r][c] && !compVisited[r][c]) {
+                            const cells = [];
+                            const q = [[r, c]];
+                            compVisited[r][c] = true;
+                            while (q.length > 0) {
+                                const [cr, cc] = q.shift();
+                                cells.push(`${cr},${cc}`);
+                                if (cr > 0 && !compVisited[cr - 1][cc] && edgesH[cr][cc] === 0) { compVisited[cr - 1][cc] = true; q.push([cr - 1, cc]); }
+                                if (cr < CELLS_Y - 1 && !compVisited[cr + 1][cc] && edgesH[cr + 1][cc] === 0) { compVisited[cr + 1][cc] = true; q.push([cr + 1, cc]); }
+                                if (cc > 0 && !compVisited[cr][cc - 1] && edgesV[cr][cc] === 0) { compVisited[cr][cc - 1] = true; q.push([cr, cc - 1]); }
+                                if (cc < CELLS_X - 1 && !compVisited[cr][cc + 1] && edgesV[cr][cc + 1] === 0) { compVisited[cr][cc + 1] = true; q.push([cr, cc + 1]); }
+                            }
+                            components.push(cells);
+                        }
+                    }
+                }
+                return { components, visited };
+            }
+
+            // 计算区域信息（无眼包、外边界、净面积）
+            function computeEnclosedRegionInfo(componentCells) {
+                const compSet = new Set(componentCells);
+                const visited = Array.from({ length: CELLS_Y }, () => Array(CELLS_X).fill(false));
+                const queue = [];
+                for (let r = 0; r < CELLS_Y; r++) {
+                    for (let c = 0; c < CELLS_X; c++) {
+                        if (r === 0 || r === CELLS_Y - 1 || c === 0 || c === CELLS_X - 1) {
+                            if (!compSet.has(`${r},${c}`)) { visited[r][c] = true; queue.push([r, c]); }
+                        }
+                    }
+                }
+                while (queue.length > 0) {
+                    const [r, c] = queue.shift();
+                    if (r > 0 && !visited[r - 1][c] && !compSet.has(`${r - 1},${c}`)) { visited[r - 1][c] = true; queue.push([r - 1, c]); }
+                    if (r < CELLS_Y - 1 && !visited[r + 1][c] && !compSet.has(`${r + 1},${c}`)) { visited[r + 1][c] = true; queue.push([r + 1, c]); }
+                    if (c > 0 && !visited[r][c - 1] && !compSet.has(`${r},${c - 1}`)) { visited[r][c - 1] = true; queue.push([r, c - 1]); }
+                    if (c < CELLS_X - 1 && !visited[r][c + 1] && !compSet.has(`${r},${c + 1}`)) { visited[r][c + 1] = true; queue.push([r, c + 1]); }
+                }
+                const eyes = [];
+                for (let r = 0; r < CELLS_Y; r++) {
+                    for (let c = 0; c < CELLS_X; c++) {
+                        if (!visited[r][c] && !compSet.has(`${r},${c}`)) {
+                            eyes.push(`${r},${c}`);
+                        }
+                    }
+                }
+                const noEyePack = new Set([...compSet, ...eyes]);
+
+                const boundaryEdgesSet = new Set();
+                // 横向边
+                for (let r = 0; r < POINTS_Y; r++) {
+                    for (let c = 0; c < CELLS_X; c++) {
+                        if (!isEdgeOccupied('H', r, c)) continue;
+                        const topCell = `${r - 1},${c}`;
+                        const bottomCell = `${r},${c}`;
+                        const topIn = (r - 1 >= 0) && noEyePack.has(topCell);
+                        const bottomIn = (r < CELLS_Y) && noEyePack.has(bottomCell);
+                        if (topIn !== bottomIn) {
+                            boundaryEdgesSet.add(edgeKey('H', r, c));
+                        }
+                    }
+                }
+                // 纵向边
+                for (let r = 0; r < CELLS_Y; r++) {
+                    for (let c = 0; c < POINTS_X; c++) {
+                        if (!isEdgeOccupied('V', r, c)) continue;
+                        const leftCell = `${r},${c - 1}`;
+                        const rightCell = `${r},${c}`;
+                        const leftIn = (c - 1 >= 0) && noEyePack.has(leftCell);
+                        const rightIn = (c < CELLS_X) && noEyePack.has(rightCell);
+                        if (leftIn !== rightIn) {
+                            boundaryEdgesSet.add(edgeKey('V', r, c));
+                        }
+                    }
+                }
+                const outerBoundaryEdges = Array.from(boundaryEdgesSet);
+                let area = noEyePack.size;
+                for (const region of frozenRegions) {
+                    if ([...region.cellSet].every(k => noEyePack.has(k))) {
+                        area -= region.netArea;
+                    }
+                }
+                return { noEyePack, outerBoundaryEdges, area };
+            }
+
+            function parseEdgeKey(key) {
+                const parts = key.split(',');
+                return { type: parts[0], r: parseInt(parts[1]), c: parseInt(parts[2]) };
+            }
+
+            function checkBoundaryEven(boundaryEdges) {
+                let redCount = 0, blueCount = 0;
+                for (const key of boundaryEdges) {
+                    const { type, r, c } = parseEdgeKey(key);
+                    const val = getEdgeValue(type, r, c);
+                    if (val === RED) redCount++;
+                    else if (val === BLUE) blueCount++;
+                }
+                if (boundaryEdges.length % 2 !== 0) {
+                    return { valid: false, error: '边界数量为奇数' };
+                }
+                return { valid: redCount % 2 === 0 && blueCount % 2 === 0, error: null };
+            }
+
+            function isMoveLegal(type, r, c, playerVal) {
+                if (gameOverFlag) return false;
+                if (isEdgeOccupied(type, r, c)) return false;
+                if (isEdgeInsideFrozenRegion(type, r, c)) return false;
+                if (!checkConnectivity(type, r, c)) return false;
+
+                setEdgeValue(type, r, c, playerVal);
+
+                let legal = true;
+                if (!checkPointRuleAfterSimulation()) legal = false;
+                if (legal) {
+                    const { components } = computeClosedComponents();
+                    for (const comp of components) {
+                        const compSet = new Set(comp);
+                        const exists = frozenRegions.some(region =>
+                            region.cellSet.size === compSet.size &&
+                            [...region.cellSet].every(k => compSet.has(k))
+                        );
+                        if (!exists) {
+                            const { outerBoundaryEdges } = computeEnclosedRegionInfo(comp);
+                            if (outerBoundaryEdges.length % 2 !== 0) {
+                                showToast('内部错误：边界数量异常');
+                                legal = false;
+                                break;
+                            }
+                            const boundaryCheck = checkBoundaryEven(outerBoundaryEdges);
+                            if (!boundaryCheck.valid) { legal = false; break; }
+                        }
+                    }
+                }
+
+                setEdgeValue(type, r, c, 0);
+                return legal;
+            }
+
+            function getLegalMoves(player) {
+                const playerVal = player === 'red' ? RED : BLUE;
+                const legalMoves = [];
+                for (let r = 0; r < POINTS_Y; r++) {
+                    for (let c = 0; c < CELLS_X; c++) {
+                        if (isMoveLegal('H', r, c, playerVal)) legalMoves.push({ type: 'H', r, c });
+                    }
+                }
+                for (let r = 0; r < CELLS_Y; r++) {
+                    for (let c = 0; c < POINTS_X; c++) {
+                        if (isMoveLegal('V', r, c, playerVal)) legalMoves.push({ type: 'V', r, c });
+                    }
+                }
+                return legalMoves;
+            }
+
+            function saveState() {
+                const state = {
+                    edgesH: edgesH.map(row => [...row]),
+                    edgesV: edgesV.map(row => [...row]),
+                    pointUsed: pointUsed.map(row => [...row]),
+                    frozenRegions: frozenRegions.map(region => ({
+                        cellSet: [...region.cellSet],
+                        cellsArray: region.cellsArray.map(cell => [...cell]),
+                        netArea: region.netArea,
+                        boundaryEdges: [...region.boundaryEdges],
+                        color: region.color,
+                        score: region.score,
+                        fillColor: region.fillColor
+                    })),
+                    scores: { ...scores },
+                    currentPlayer,
+                    noMoveFlags: { ...noMoveFlags },
+                    gameOverFlag,
+                    moveCount
+                };
+                return state;
+            }
+
+            function restoreState(state) {
+                edgesH = state.edgesH.map(row => [...row]);
+                edgesV = state.edgesV.map(row => [...row]);
+                pointUsed = state.pointUsed.map(row => [...row]);
+                frozenRegions = state.frozenRegions.map(region => ({
+                    cellSet: new Set(region.cellSet),
+                    cellsArray: region.cellsArray.map(cell => [...cell]),
+                    netArea: region.netArea,
+                    boundaryEdges: [...region.boundaryEdges],
+                    color: region.color,
+                    score: region.score,
+                    fillColor: region.fillColor
+                }));
+                scores = { ...state.scores };
+                currentPlayer = state.currentPlayer;
+                noMoveFlags = { ...state.noMoveFlags };
+                gameOverFlag = state.gameOverFlag;
+                moveCount = state.moveCount;
+                hoveredEdge = null;
+            }
+
+            function makeMove(type, r, c) {
+                if (gameOverFlag) return;
+                const playerVal = currentPlayer === 'red' ? RED : BLUE;
+                if (!isMoveLegal(type, r, c, playerVal)) return false;
+
+                // 保存状态（悔棋用）
+                lastState = saveState();
+                btnUndo.disabled = false;
+
+                addEdge(type, r, c, playerVal);
+
+                const { components } = computeClosedComponents();
+                for (const comp of components) {
+                    const compSet = new Set(comp);
+                    const exists = frozenRegions.some(region =>
+                        region.cellSet.size === compSet.size &&
+                        [...region.cellSet].every(k => compSet.has(k))
+                    );
+                    if (!exists) {
+                        const { noEyePack, outerBoundaryEdges, area } = computeEnclosedRegionInfo(comp);
+                        if (outerBoundaryEdges.length % 2 !== 0) {
+                            showToast('内部错误：边界数量异常');
+                            removeEdge(type, r, c);
+                            lastState = null;
+                            btnUndo.disabled = true;
+                            return false;
+                        }
+                        let redCount = 0, blueCount = 0;
+                        for (const key of outerBoundaryEdges) {
+                            const { type: et, r: er, c: ec } = parseEdgeKey(key);
+                            if (getEdgeValue(et, er, ec) === RED) redCount++;
+                            else blueCount++;
+                        }
+                        const totalEdges = outerBoundaryEdges.length;
+                        let color, score, fillColor;
+                        if (redCount === totalEdges && totalEdges > 0) {
+                            color = 'red'; score = area; fillColor = 'rgba(217,79,79,0.45)';
+                        } else if (blueCount === totalEdges && totalEdges > 0) {
+                            color = 'blue'; score = area; fillColor = 'rgba(79,125,217,0.45)';
+                        } else if (redCount > blueCount) {
+                            color = 'red'; score = area / 2; fillColor = 'rgba(245,184,184,0.6)';
+                        } else if (blueCount > redCount) {
+                            color = 'blue'; score = area / 2; fillColor = 'rgba(184,205,245,0.6)';
+                        } else {
+                            color = 'gray'; score = 0; fillColor = 'rgba(204,204,204,0.55)';
+                        }
+
+                        frozenRegions.push({
+                            cellSet: compSet,
+                            cellsArray: comp.map(k => k.split(',').map(Number)),
+                            netArea: area,
+                            boundaryEdges: outerBoundaryEdges,
+                            color: color,
+                            score: score,
+                            fillColor: fillColor
+                        });
+
+                        if (color === 'red') scores.red += score;
+                        else if (color === 'blue') scores.blue += score;
+                    }
+                }
+
+                const opponent = currentPlayer === 'red' ? 'blue' : 'red';
+                if (noMoveFlags[opponent]) {
+                    scores[opponent] -= 0.5;
+                    noMoveFlags[opponent] = false;
+                }
+
+                updateScoreDisplay();
+                drawBoard();
+
+                currentPlayer = opponent;
+                updateTurnDisplay();
+                beginTurn();
+                return true;
+            }
+
+            function undoMove() {
+                if (!lastState || gameOverFlag) return;
+                restoreState(lastState);
+                lastState = null;
+                btnUndo.disabled = true;
+                updateScoreDisplay();
+                updateTurnDisplay();
+                drawBoard();
+                resultText.classList.add('hidden');
+                beginTurn();
+            }
+
+            function beginTurn() {
+                if (gameOverFlag) return;
+                const legalMoves = getLegalMoves(currentPlayer);
+                if (legalMoves.length === 0) {
+                    noMoveFlags[currentPlayer] = true;
+                    showToast(`${currentPlayer === 'red' ? '红方' : '蓝方'}无子可走`);
+                    const other = currentPlayer === 'red' ? 'blue' : 'red';
+                    setTimeout(() => {
+                        if (gameOverFlag) return;
+                        const otherMoves = getLegalMoves(other);
+                        if (otherMoves.length === 0) {
+                            gameOver();
+                        } else {
+                            currentPlayer = other;
+                            updateTurnDisplay();
+                            beginTurn();
+                        }
+                    }, 700);
+                }
+            }
+
+            function gameOver() {
+                gameOverFlag = true;
+                const redScore = scores.red;
+                const blueScore = scores.blue;
+                let msg = '';
+                if (redScore > blueScore) msg = `红方胜！ 红 ${redScore.toFixed(1)} : 蓝 ${blueScore.toFixed(1)}`;
+                else if (blueScore > redScore) msg = `蓝方胜！ 红 ${redScore.toFixed(1)} : 蓝 ${blueScore.toFixed(1)}`;
+                else msg = `平局！ 红 ${redScore.toFixed(1)} : 蓝 ${blueScore.toFixed(1)}`;
+                showToast('游戏结束');
+                setTimeout(() => {
+                    resultText.textContent = msg;
+                    resultText.classList.remove('hidden');
+                    btnUndo.disabled = true;
+                    updateTurnDisplay();
+                }, 700);
+            }
+
+            function showToast(text) {
+                toastMessage.textContent = text;
+                toastMessage.classList.add('show');
+                setTimeout(() => toastMessage.classList.remove('show'), 700);
+            }
+
+            function updateTurnDisplay() {
+                if (gameOverFlag) {
+                    turnIndicator.textContent = '游戏结束';
+                    turnIndicator.className = 'turn-indicator';
+                } else if (currentPlayer === 'red') {
+                    turnIndicator.textContent = '红方回合';
+                    turnIndicator.className = 'turn-indicator turn-red';
+                } else {
+                    turnIndicator.textContent = '蓝方回合';
+                    turnIndicator.className = 'turn-indicator turn-blue';
+                }
+            }
+
+            function updateScoreDisplay() {
+                scoreRedSpan.textContent = scores.red.toFixed(1);
+                scoreBlueSpan.textContent = scores.blue.toFixed(1);
+            }
+
+            function drawBoard() {
+                ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                drawGridBackground();
+                drawFrozenRegions();
+                drawEdges();
+                drawHoverHighlight();
+                drawPoints();
+            }
+
+            function drawGridBackground() {
+                ctx.strokeStyle = 'rgba(180,170,150,0.25)';
+                ctx.lineWidth = 1;
+                for (let r = 0; r < POINTS_Y; r++) {
+                    for (let c = 0; c < CELLS_X; c++) {
+                        const x1 = MARGIN + c * SPACING;
+                        const y1 = MARGIN + r * SPACING;
+                        const x2 = MARGIN + (c + 1) * SPACING;
+                        const y2 = y1;
+                        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+                    }
+                }
+                for (let r = 0; r < CELLS_Y; r++) {
+                    for (let c = 0; c < POINTS_X; c++) {
+                        const x1 = MARGIN + c * SPACING;
+                        const y1 = MARGIN + r * SPACING;
+                        const x2 = x1;
+                        const y2 = MARGIN + (r + 1) * SPACING;
+                        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+                    }
+                }
+            }
+
+            function drawFrozenRegions() {
+                for (const region of frozenRegions) {
+                    ctx.fillStyle = region.fillColor;
+                    for (const [r, c] of region.cellsArray) {
+                        const x = MARGIN + c * SPACING;
+                        const y = MARGIN + r * SPACING;
+                        ctx.fillRect(x + 1, y + 1, SPACING - 2, SPACING - 2);
+                    }
+                    if (region.score !== 0) {
+                        const pos = findCenterCell(region.cellsArray);
+                        if (pos) {
+                            const [r, c] = pos;
+                            const cx = MARGIN + c * SPACING + SPACING / 2;
+                            const cy = MARGIN + r * SPACING + SPACING / 2;
+                            ctx.fillStyle = '#2c2c2c';
+                            ctx.font = 'bold 18px "Segoe UI", "PingFang SC", sans-serif';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(Math.abs(region.score).toFixed(1), cx, cy);
+                        }
+                    }
+                }
+            }
+
+            function findCenterCell(cellsArray) {
+                if (cellsArray.length === 0) return null;
+                let sumR = 0, sumC = 0;
+                for (const [r, c] of cellsArray) { sumR += r; sumC += c; }
+                const avgR = sumR / cellsArray.length;
+                const avgC = sumC / cellsArray.length;
+                let best = null, bestDist = Infinity;
+                for (const [r, c] of cellsArray) {
+                    const dist = Math.abs(r - avgR) + Math.abs(c - avgC);
+                    if (dist < bestDist) { bestDist = dist; best = [r, c]; }
+                }
+                return best;
+            }
+
+            function drawEdges() {
+                for (let r = 0; r < POINTS_Y; r++) {
+                    for (let c = 0; c < CELLS_X; c++) {
+                        if (edgesH[r][c] !== 0) {
+                            const x1 = MARGIN + c * SPACING;
+                            const y1 = MARGIN + r * SPACING;
+                            const x2 = MARGIN + (c + 1) * SPACING;
+                            const y2 = y1;
+                            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                            ctx.strokeStyle = edgesH[r][c] === RED ? '#d94f4f' : '#4f7dd9';
+                            ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.stroke();
+                        }
+                    }
+                }
+                for (let r = 0; r < CELLS_Y; r++) {
+                    for (let c = 0; c < POINTS_X; c++) {
+                        if (edgesV[r][c] !== 0) {
+                            const x1 = MARGIN + c * SPACING;
+                            const y1 = MARGIN + r * SPACING;
+                            const x2 = x1;
+                            const y2 = MARGIN + (r + 1) * SPACING;
+                            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                            ctx.strokeStyle = edgesV[r][c] === RED ? '#d94f4f' : '#4f7dd9';
+                            ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            function drawHoverHighlight() {
+                if (!hoveredEdge) return;
+                const { type, r, c } = hoveredEdge;
+                const x1 = MARGIN + c * SPACING;
+                const y1 = MARGIN + (type === 'H' ? r * SPACING : r * SPACING);
+                const x2 = MARGIN + (type === 'H' ? (c + 1) * SPACING : c * SPACING);
+                const y2 = MARGIN + (type === 'H' ? r * SPACING : (r + 1) * SPACING);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = 'rgba(255, 215, 0, 0.9)';
+                ctx.lineWidth = 6;
+                ctx.setLineDash([8, 6]);
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            function drawPoints() {
+                ctx.fillStyle = '#4a3f2a';
+                for (let r = 0; r < POINTS_Y; r++) {
+                    for (let c = 0; c < POINTS_X; c++) {
+                        const x = MARGIN + c * SPACING;
+                        const y = MARGIN + r * SPACING;
+                        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+                    }
+                }
+            }
+
+            function findEdgeFromPoint(mx, my) {
+                const threshold = SPACING * 0.35;
+                let bestEdge = null;
+                let bestDist = Infinity;
+                for (let r = 0; r < POINTS_Y; r++) {
+                    for (let c = 0; c < CELLS_X; c++) {
+                        const x1 = MARGIN + c * SPACING;
+                        const y1 = MARGIN + r * SPACING;
+                        const x2 = MARGIN + (c + 1) * SPACING;
+                        const y2 = y1;
+                        const dist = distanceToSegment(mx, my, x1, y1, x2, y2);
+                        if (dist < bestDist) { bestDist = dist; bestEdge = { type: 'H', r, c }; }
+                    }
+                }
+                for (let r = 0; r < CELLS_Y; r++) {
+                    for (let c = 0; c < POINTS_X; c++) {
+                        const x1 = MARGIN + c * SPACING;
+                        const y1 = MARGIN + r * SPACING;
+                        const x2 = x1;
+                        const y2 = MARGIN + (r + 1) * SPACING;
+                        const dist = distanceToSegment(mx, my, x1, y1, x2, y2);
+                        if (dist < bestDist) { bestDist = dist; bestEdge = { type: 'V', r, c }; }
+                    }
+                }
+                if (bestEdge && bestDist <= threshold) return bestEdge;
+                return null;
+            }
+
+            function distanceToSegment(px, py, x1, y1, x2, y2) {
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const lengthSq = dx * dx + dy * dy;
+                if (lengthSq === 0) return Math.hypot(px - x1, py - y1);
+                let t = ((px - x1) * dx + (py - y1) * dy) / lengthSq;
+                t = Math.max(0, Math.min(1, t));
+                const projX = x1 + t * dx;
+                const projY = y1 + t * dy;
+                return Math.hypot(px - projX, py - projY);
+            }
+
+            function getCanvasCoordinates(e) {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = CANVAS_WIDTH / rect.width;
+                const scaleY = CANVAS_HEIGHT / rect.height;
+                const mx = (e.clientX - rect.left) * scaleX;
+                const my = (e.clientY - rect.top) * scaleY;
+                return { mx, my };
+            }
+
+            function onCanvasMouseMove(e) {
+                if (gameOverFlag) {
+                    if (hoveredEdge) { hoveredEdge = null; drawBoard(); }
+                    return;
+                }
+                const { mx, my } = getCanvasCoordinates(e);
+                const edge = findEdgeFromPoint(mx, my);
+                const playerVal = currentPlayer === 'red' ? RED : BLUE;
+                let newHover = null;
+                if (edge && isMoveLegal(edge.type, edge.r, edge.c, playerVal)) {
+                    newHover = edge;
+                }
+                if (newHover?.type !== hoveredEdge?.type || newHover?.r !== hoveredEdge?.r || newHover?.c !== hoveredEdge?.c) {
+                    hoveredEdge = newHover;
+                    drawBoard();
+                }
+            }
+
+            function onCanvasMouseLeave() {
+                if (hoveredEdge) { hoveredEdge = null; drawBoard(); }
+            }
+
+            function onCanvasClick(e) {
+                if (gameOverFlag) return;
+                const { mx, my } = getCanvasCoordinates(e);
+                const edge = findEdgeFromPoint(mx, my);
+                if (!edge) return;
+
+                const playerVal = currentPlayer === 'red' ? RED : BLUE;
+                if (isEdgeOccupied(edge.type, edge.r, edge.c)) {
+                    showToast('该位置已有线');
+                    return;
+                }
+                if (isEdgeInsideFrozenRegion(edge.type, edge.r, edge.c)) {
+                    showToast('此区域已冻结，禁止落子');
+                    return;
+                }
+                if (!checkConnectivity(edge.type, edge.r, edge.c)) {
+                    showToast('必须与已有线相接');
+                    return;
+                }
+                if (!isMoveLegal(edge.type, edge.r, edge.c, playerVal)) {
+                    showToast('非法走法：违反点规则或区域规则');
+                    return;
+                }
+                makeMove(edge.type, edge.r, edge.c);
+                hoveredEdge = null;
+                drawBoard();
+            }
+
+            function onRestart() {
+                // 返回开始界面
+                gameScreen.classList.add('hidden');
+                startScreen.classList.remove('hidden');
+                // 清空画布
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+
+            canvas.addEventListener('click', onCanvasClick);
+            canvas.addEventListener('mousemove', onCanvasMouseMove);
+            canvas.addEventListener('mouseleave', onCanvasMouseLeave);
+            btnUndo.addEventListener('click', undoMove);
+            btnRestart.addEventListener('click', onRestart);
+        })();
+    </script>
+</body>
+</html>
